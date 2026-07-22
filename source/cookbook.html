@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>COOKBOOK</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:         #000d1a;
+    --ink:        #00e5ff;
+    --ink-dim:    #006080;
+    --ink-bright: #80f0ff;
+    --amber:      #ffb400;
+    --red:        #ff3333;
+    --font:       "VT323", "IBM Plex Mono", "Courier New", monospace;
+}
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #000d1a;
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 17px;
+    padding: 24px;
+    min-height: 100vh;
+  }
+
+  h2 {
+    font-size: 22px;
+    font-weight: normal;
+    color: var(--ink-bright);
+    text-shadow: 0 0 6px var(--ink);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--ink-dim);
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+  }
+
+  /* hardware pills */
+  .hw-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .hw-pill {
+    border: 1px solid var(--ink-dim);
+    padding: 4px 12px;
+    font-size: 15px;
+    color: var(--ink-dim);
+    letter-spacing: 1px;
+  }
+  .hw-pill span { color: var(--ink-bright); }
+
+  /* complexity */
+  .complexity-bar {
+    border-left: 3px solid var(--amber);
+    padding: 8px 12px;
+    font-size: 15px;
+    color: var(--ink-dim);
+    line-height: 1.7;
+    margin-bottom: 16px;
+    background: #000508;
+  }
+  .complexity-bar strong { color: var(--amber); text-shadow: 0 0 4px var(--amber); }
+
+  /* section label */
+  .section-label {
+    font-size: 12px;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+
+  /* model cards */
+  .model-card {
+    border: 1px solid var(--ink-dim);
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    position: relative;
+    transition: border-color .2s;
+  }
+  .model-card.top { border-color: var(--ink); box-shadow: 0 0 8px rgba(0,229,255,0.15); }
+  .model-name {
+    font-size: 18px;
+    color: var(--ink-bright);
+    text-shadow: 0 0 4px var(--ink);
+  }
+  .model-params { font-size: 14px; color: var(--ink-dim); }
+  .model-desc   { font-size: 14px; color: var(--ink-dim); line-height: 1.5; }
+  .model-ram    { font-size: 13px; color: #005060; }
+
+  .badge {
+    font-size: 12px;
+    padding: 2px 8px;
+    letter-spacing: 1px;
+    align-self: flex-start;
+  }
+  .badge-top     { position: absolute; top: 10px; right: 10px; color: var(--amber); border: 1px solid var(--amber); text-shadow: 0 0 4px var(--amber); }
+  .badge-pulled  { color: var(--ink); border: 1px solid var(--ink); }
+  .badge-missing { color: var(--ink-dim); border: 1px solid var(--ink-dim); }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+
+  /* loading / error states */
+  #loading {
+    color: var(--ink-dim);
+    font-size: 17px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 20px 0;
+  }
+  #error-msg { color: var(--red); font-size: 16px; padding: 10px 0; }
+
+  /* total count */
+  #total-count { font-size: 13px; color: var(--ink-dim); margin-bottom: 10px; letter-spacing: 1px; }
+
+  /* refresh btn */
+  #refresh-btn {
+    font-family: var(--font);
+    font-size: 15px;
+    background: transparent;
+    border: 1px solid var(--ink-dim);
+    color: var(--ink-dim);
+    padding: 3px 12px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+    transition: border-color .2s, color .2s;
+  }
+  #refresh-btn:hover { border-color: var(--ink); color: var(--ink); }
+</style>
+</head>
+<body>
+
+<h2>Cookbook — Model Recommender</h2>
+
+<div id="loading">Scanning hardware and data<span id="dots"></span></div>
+<div id="error-msg" style="display:none"></div>
+<div id="content"   style="display:none">
+  <div class="hw-bar" id="hw-bar"></div>
+  <div id="complexity-block"></div>
+  <button id="refresh-btn" onclick="load()">[ REFRESH ]</button>
+  <div class="section-label" id="section-label"></div>
+  <div id="total-count"></div>
+  <div id="model-list"></div>
+</div>
+
+<script>
+  const API = "http://localhost:5000";
+
+  // animate dots
+  let dot = 0;
+  const dotEl = document.getElementById("dots");
+  const dotTimer = setInterval(() => { dotEl.textContent = ".".repeat((dot++ % 3) + 1); }, 400);
+
+  // get session_id from parent window if embedded in iframe
+function getSessionId() {
+    // try URL param
+    const params = new URLSearchParams(window.location.search);
+    const sid    = params.get("session_id");
+    if (sid && sid !== "null" && sid !== "") return sid;
+
+    // try parent window exposed variable
+    try {
+        const parentSid = window.parent._sessionId;
+        if (parentSid && parentSid !== "null") return parentSid;
+    } catch { }
+
+    return null;
+}
+
+  async function load() {
+        console.log("load() called, session_id =", getSessionId());
+    document.getElementById("loading").style.display  = "block";
+    document.getElementById("content").style.display  = "none";
+    document.getElementById("error-msg").style.display = "none";
+    document.getElementById("loading").style.display  = "block";
+    document.getElementById("content").style.display  = "none";
+    document.getElementById("error-msg").style.display = "none";
+
+    try {
+      const res  = await fetch(`${API}/cookbook`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ session_id: getSessionId() }),
+      });
+      const data = await res.json();
+      clearInterval(dotTimer);
+      render(data);
+    } catch(e) {
+      clearInterval(dotTimer);
+      document.getElementById("loading").style.display   = "none";
+      document.getElementById("error-msg").style.display = "block";
+      document.getElementById("error-msg").textContent   = "ERROR: Could not reach server. Is app.py running?";
+    }
+  }
+
+  function render(data) {
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("content").style.display = "block";
+
+    const hw = data.hardware;
+
+    // hardware bar
+    document.getElementById("hw-bar").innerHTML = `
+      <div class="hw-pill">RAM <span>${hw.ram_gb} GB</span></div>
+      <div class="hw-pill">CPU <span>${hw.cpu.split(" ").slice(0,5).join(" ")}</span></div>
+      ${hw.vram_gb > 0 ? `<div class="hw-pill">VRAM <span>${hw.vram_gb} GB</span></div>` : ""}
+    `;
+
+    // complexity
+    const cb = document.getElementById("complexity-block");
+    if (data.has_data && data.complexity) {
+      cb.innerHTML = `<div class="complexity-bar">
+        DATA COMPLEXITY: <strong>${data.complexity}</strong><br>
+        <span>${data.reasons.join("  ·  ")}</span>
+      </div>`;
+    } else {
+      cb.innerHTML = `<div class="complexity-bar" style="border-color:var(--ink-dim)">
+        <span>No file uploaded — showing hardware-compatible models only</span>
+      </div>`;
+    }
+
+    // section label
+    document.getElementById("section-label").textContent =
+      data.has_data ? "Recommended for your hardware + data" : "Compatible with your hardware";
+    document.getElementById("total-count").textContent =
+      `Showing top ${data.models.length} of ${data.total_available} compatible models`;
+
+    // model cards
+    const list = document.getElementById("model-list");
+    list.innerHTML = "";
+    data.models.forEach((m, i) => {
+      const isTop    = i === 0;
+      const isPulled = m.pulled;
+      const card     = document.createElement("div");
+      card.className = `model-card${isTop ? " top" : ""}`;
+      card.innerHTML = `
+        ${isTop ? `<div class="badge badge-top">BEST MATCH</div>` : ""}
+        <div class="model-name">${m.name}</div>
+        <div class="model-params">${m.params} params · needs ${m.ram_need} RAM</div>
+        <div class="model-desc">${m.desc || ""}</div>
+      `;
+      list.appendChild(card);
+    });
+  }
+
+  window.addEventListener("load", load);
+</script>
+</body>
+</html>

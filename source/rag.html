@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG PIPELINE</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:         #000d1a;
+    --ink:        #00e5ff;
+    --ink-dim:    #006080;
+    --ink-bright: #80f0ff;
+    --amber:      #ffb400;
+    --red:        #ff3333;
+    --font:       "VT323", "IBM Plex Mono", "Courier New", monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #000508;
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 18px;
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: #000d1a;
+    border-right: 1px solid var(--ink-dim);
+    box-shadow: 2px 0 12px rgba(0,229,255,0.15);
+    display: flex;
+    flex-direction: column;
+    padding: 20px 16px;
+    gap: 16px;
+    overflow-y: auto;
+  }
+
+  #sidebar h1 {
+    font-size: 22px;
+    font-weight: normal;
+    color: var(--ink-bright);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px var(--ink), 0 0 16px var(--ink);
+    border-bottom: 1px solid var(--ink-dim);
+    padding-bottom: 10px;
+  }
+
+  /* nav buttons */
+  .nav-btn {
+    font-family: var(--font);
+    font-size: 17px;
+    background: transparent;
+    border: 1px solid var(--ink);
+    color: var(--ink);
+    padding: 6px 12px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    /* text-shadow: 0 0 4px var(--ink); */
+    transition: background .15s, color .15s;
+    width: 100%;
+    text-align: left;
+  }
+  .nav-btn:hover       { background: var(--ink); color: var(--bg); text-shadow: none; }
+  .nav-btn.analyst-btn { border-color: var(--amber); color: var(--amber); }
+  .nav-btn.analyst-btn:hover { background: var(--amber); color: #000; text-shadow: none; }
+
+  /* upload zone */
+  #drop-zone {
+    border: 1px dashed var(--ink-dim);
+    padding: 18px 12px;
+    text-align: center;
+    cursor: pointer;
+    color: var(--ink-dim);
+    font-size: 16px;
+    line-height: 1.7;
+    transition: border-color .2s, color .2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  #drop-zone:hover, #drop-zone.drag {
+    border-color: var(--ink);
+    color: var(--ink-bright);
+    box-shadow: 0 0 10px rgba(0,229,255,0.2);
+  }
+  #drop-zone .icon { font-size: 26px; margin-bottom: 4px; }
+  #file-input { display: none; }
+
+  /* file card */
+  #file-card {
+    display: none;
+    background: #000d1a;
+    border: 1px solid var(--ink-dim);
+    padding: 12px;
+    font-size: 15px;
+    gap: 6px;
+    flex-direction: column;
+    box-shadow: 0 0 8px rgba(0,229,255,0.2);
+  }
+  #file-card .fname { color: var(--ink-bright); word-break: break-all; text-shadow: 0 0 4px var(--ink); }
+  #file-card .meta  { color: var(--ink-dim); }
+
+  #change-btn {
+    font-family: var(--font);
+    font-size: 14px;
+    background: transparent;
+    border: 1px solid var(--ink-dim);
+    color: var(--ink-dim);
+    padding: 3px 10px;
+    cursor: pointer;
+    text-transform: uppercase;
+    align-self: flex-start;
+    margin-top: 4px;
+    transition: border-color .2s, color .2s;
+  }
+  #change-btn:hover { border-color: var(--ink); color: var(--ink); }
+
+  /* history panel */
+  #history-panel { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+  .hist-title {
+    font-size: 13px;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    border-bottom: 1px solid var(--ink-dim);
+    padding-bottom: 4px;
+  }
+  .hist-item {
+    border: 1px solid var(--ink-dim);
+    padding: 8px 10px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    transition: border-color .2s, background .2s;
+  }
+  .hist-item:hover    { border-color: var(--ink); background: #000d1a; }
+  .hist-file          { font-size: 14px; color: var(--ink-bright); }
+  .hist-preview       { font-size: 13px; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hist-meta          { font-size: 12px; color: #005060; }
+  .del-btn {
+    align-self: flex-end;
+    background: none;
+    border: none;
+    color: #005060;
+    font-family: var(--font);
+    font-size: 12px;
+    cursor: pointer;
+    opacity: .5;
+  }
+  .del-btn:hover { color: var(--red); }
+
+  #sidebar-footer {
+    margin-top: auto;
+    font-size: 13px;
+    color: #005060;
+    line-height: 1.6;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* ── Main ── */
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: radial-gradient(ellipse at center, #000d18 0%, #00080f 100%);
+  }
+
+  /* empty state */
+  #empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--ink-dim);
+  }
+  #empty-state pre {
+    font-size: 15px;
+    line-height: 1.2;
+    color: var(--ink-dim);
+    text-shadow: 0 0 4px var(--ink-dim);
+    letter-spacing: 2px;
+  }
+  #empty-state p { font-size: 18px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 2px; }
+
+  /* cursor */
+  .cursor {
+    display: inline-block;
+    width: 10px; height: 18px;
+    background: var(--ink);
+    box-shadow: 0 0 8px var(--ink);
+    animation: blink 1s steps(2) infinite;
+    vertical-align: middle;
+    margin-left: 2px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* chat area */
+  #chat-area { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    scroll-behavior: smooth;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  #messages::-webkit-scrollbar { width: 4px; }
+  #messages::-webkit-scrollbar-thumb { background: var(--ink-dim); }
+
+  /* terminal lines */
+  .term-line { display: block; white-space: pre-wrap; word-break: break-word; padding: 1px 0; }
+  .term-line.user {
+    color: var(--ink-bright);
+    margin-top: 14px;
+  }
+  .term-line.user::before { content: "> "; color: var(--ink-bright); }
+  .term-line.bot  { color: var(--ink); }
+  .term-line.bot::before  { content: ""; color: var(--ink-dim); }
+
+  /* sources block */
+  .sources-block {
+    margin: 4px 0;
+    background: #000508;
+    border-left: 3px solid var(--amber);
+    padding: 6px 12px;
+    font-size: 14px;
+    color: var(--ink-dim);
+    line-height: 1.6;
+  }
+  .sources-block summary {
+    font-size: 14px;
+    color: var(--amber);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    list-style: none;
+    cursor: pointer;
+    text-shadow: 0 0 4px var(--amber);
+  }
+  .sources-block summary::before { content: "▶ "; font-size: 10px; }
+  details[open] .sources-block summary::before { content: "▼ "; }
+  .source-item {
+    margin-top: 6px;
+    padding: 6px 0;
+    border-top: 1px solid var(--ink-dim);
+    font-size: 13px;
+    white-space: pre-wrap;
+    opacity: .8;
+  }
+
+  /* typing */
+  .typing { display: flex; gap: 6px; padding: 4px 0; align-items: center; }
+  .typing span {
+    width: 8px; height: 16px;
+    background: var(--ink);
+    box-shadow: 0 0 6px var(--ink);
+    animation: blink 1s steps(2) infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: .33s; }
+  .typing span:nth-child(3) { animation-delay: .66s; }
+
+  /* input bar */
+  #input-bar {
+    padding: 10px 28px 14px;
+    border-top: 1px solid var(--ink-dim);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    background: #000810;
+    box-shadow: 0 -4px 12px rgba(0,229,255,0.08);
+  }
+  #input-prefix { color: var(--ink-bright);
+    font-size: 15px;
+    text-shadow: 0 0 4px var(--ink);
+    flex-shrink: 0; }
+  #question {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--ink-dim);
+    color: var(--ink-bright);
+    font-size: 15px;
+    font-family: var(--font);
+    padding: 4px 2px;
+    resize: none;
+    outline: none;
+    line-height: 1.5;
+    max-height: 120px;
+  }
+  #question::placeholder { color: var(--ink-dim); }
+  #question:disabled { opacity: .3; cursor: not-allowed; }
+
+  #send-btn {
+    font-family: var(--font);
+    font-size: 15px;
+    background: transparent;
+    border: 1px solid var(--ink-dim);
+    color: var(--ink);
+    padding: 6px 14px;
+    cursor: pointer;
+    text-transform: uppercase;
+    /* text-shadow: 0 0 4px var(--ink); */
+    transition: background .15s, color .15s;
+    flex-shrink: 0;
+  }
+  #send-btn:hover:not(:disabled) { background: var(--ink); color: var(--bg); text-shadow: none; }
+  #send-btn:disabled { opacity: .3; cursor: not-allowed; }
+
+    #model-dropdown {
+    position: relative;
+    width: 120px;
+    flex-shrink: 0;
+}
+#model-selected {
+    font-family: var(--font);
+    font-size: 15px;
+    background: #000d1a;
+    border: 1px solid var(--ink-dim);
+    color: var(--ink-dim);
+    padding: 4px 14px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: border-color .2s, color .2s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#model-selected:hover { border-color: var(--ink); color: var(--ink); }
+#model-options {
+    display: none;
+    position: absolute;
+    bottom: 110%;
+    left: 0;
+    width: 220px;
+    background: #000d1a;
+    border: 1px solid var(--ink);
+    box-shadow: 0 0 12px rgba(0,229,255,0.15);
+    z-index: 999;
+    max-height: 200px;
+    overflow-y: auto;
+}
+#model-options.open { display: block; }
+.model-option {
+    font-family: var(--font);
+    font-size: 15px;
+    padding: 6px 10px;
+    color: var(--ink-dim);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #000d1a;
+    transition: background .1s, color .1s;
+}
+.model-option:hover    { background: var(--ink); color: #000; }
+.model-option.active   { color: var(--ink-bright); }
+
+/* loading overlay */
+  #loading-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+  }
+  #loading-overlay.show { display: flex; }
+  #loading-overlay p {
+    font-family: var(--font);
+    font-size: 20px;
+    color: var(--ink);
+    text-shadow: 0 0 8px var(--ink);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .load-bar {
+    width: 200px;
+    height: 10px;
+    border: 1px solid var(--ink-dim);
+    overflow: hidden;
+  }
+  .load-bar-inner {
+    height: 100%;
+    width: 0%;
+    background: repeating-linear-gradient(
+      to right, var(--ink) 0 8px, transparent 8px 10px
+    );
+    box-shadow: 0 0 6px var(--ink);
+    animation: loading-fill 1.5s ease-in-out infinite;
+  }
+  @keyframes loading-fill {
+    0%   { width: 0%; }
+    50%  { width: 80%; }
+    100% { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<aside id="sidebar">
+  <h1>RAG PIPELINE</h1>
+
+  <button class="nav-btn analyst-btn" onclick="window.location.href='http://localhost:5000'">[ DATA ANALYST ]</button>
+  <button class="nav-btn primary"     onclick="newChat()">[ + NEW SESSION ]</button>
+
+  <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+    <div class="icon">⬆</div>
+    UPLOAD DOCUMENT<br>
+    <span style="font-size:14px;color:var(--ink-dim)">PDF · TXT · DOCX · MD · CSV</span><br>
+    <span style="font-size:13px;color:var(--ink-dim)">or drag &amp; drop</span>
+    <input type="file" id="file-input" accept=".pdf,.txt,.docx,.doc,.md,.csv,.xlsx"/>
+  </div>
+
+  <div id="file-card">
+    <div class="fname" id="fc-name"></div>
+    <div class="meta"  id="fc-meta"></div>
+    <button id="change-btn" onclick="resetFile()">[ CHANGE FILE ]</button>
+  </div>
+
+  <div id="history-panel">
+    <div class="hist-title">Recent Sessions</div>
+    <div id="hist-list"></div>
+  </div>
+
+  <div id="sidebar-footer">
+    OLLAMA · LOCAL · PRIVATE
+  </div>
+</aside>
+
+<!-- ── Main ── -->
+<main id="main">
+  <div id="empty-state">
+    <pre>
+  ╔══════════════════════════════════════╗
+  ║   RAG PIPELINE                       ║
+  ║   UPLOAD DOCUMENT INPUT...           ║
+  ╚══════════════════════════════════════╝
+    </pre>
+    <p>Upload a document to begin</span></p>
+  </div>
+
+  <div id="chat-area">
+    <div id="messages"></div>
+    <div id="input-bar">
+        <div id="model-dropdown">
+    <div id="model-selected" onclick="toggleDropdown()">-- MODEL --</div>
+    <div id="model-options"></div>
+  </div>
+      <span id="input-prefix">&gt;</span>
+      <textarea id="question" rows="1" placeholder="ASK ABOUT YOUR DOCUMENT..." disabled></textarea>
+      <button id="send-btn" disabled onclick="sendMessage()">[ SEND ]</button>
+    </div>
+  </div>
+</main>
+
+<script>
+  const API    = "http://localhost:5000";
+  let ragChatId = null;
+
+  // ── Drag & drop ──────────────────────────────────────────────────────────
+  const zone = document.getElementById("drop-zone");
+  zone.addEventListener("dragover",  e => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", e => {
+    e.preventDefault(); zone.classList.remove("drag");
+    if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
+  });
+  document.getElementById("file-input").addEventListener("change", e => {
+    if (e.target.files[0]) uploadFile(e.target.files[0]);
+  });
+
+  // ── Upload ───────────────────────────────────────────────────────────────
+  async function uploadFile(file) {
+    zone.innerHTML = "INGESTING DOCUMENT...<span class='cursor'></span>";
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res  = await fetch(`${API}/rag/upload`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.error) { alert(data.error); resetFile(); return; }
+
+      ragChatId = data.chat_id;
+
+      document.getElementById("drop-zone").style.display = "none";
+      document.getElementById("file-card").style.display = "flex";
+      document.getElementById("fc-name").textContent = data.filename;
+      document.getElementById("fc-meta").textContent = `${data.chunks} CHUNKS INDEXED`;
+
+      document.getElementById("empty-state").style.display = "none";
+      document.getElementById("chat-area").style.display   = "flex";
+      document.getElementById("question").disabled  = false;
+      document.getElementById("send-btn").disabled  = false;
+      document.getElementById("question").focus();
+
+      addBotMessage(
+        `FILE INDEXED: ${data.filename}\nCHUNKS: ${data.chunks}\n\nHYBRID RAG READY.\nASK ANYTHING ABOUT YOUR DOCUMENT.`,
+        []
+      );
+      loadHistory();
+    } catch {
+      alert("CONNECTION FAILED. IS app.py RUNNING?");
+      resetFile();
+    }
+  }
+
+  function resetFile() {
+    ragChatId = null;
+    const dz  = document.getElementById("drop-zone");
+    dz.style.display = "block";
+    dz.innerHTML = `<div class="icon">⬆</div>UPLOAD DOCUMENT<br><span style="font-size:14px;color:var(--ink-dim)">PDF · TXT · DOCX · MD · CSV</span><br><span style="font-size:13px;color:var(--ink-dim)">or drag & drop</span><input type="file" id="file-input" accept=".pdf,.txt,.docx,.doc,.md,.csv,.xlsx"/>`;
+    document.getElementById("file-input").addEventListener("change", e => { if (e.target.files[0]) uploadFile(e.target.files[0]); });
+    document.getElementById("file-card").style.display   = "none";
+    document.getElementById("empty-state").style.display = "flex";
+    document.getElementById("chat-area").style.display   = "none";
+    document.getElementById("messages").innerHTML        = "";
+    document.getElementById("question").disabled  = true;
+    document.getElementById("send-btn").disabled  = true;
+  }
+
+  function newChat() { resetFile(); loadHistory(); }
+
+  // ── Send message ─────────────────────────────────────────────────────────
+  document.getElementById("question").addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  async function sendMessage() {
+    const q = document.getElementById("question").value.trim();
+    if (!q || !ragChatId) return;
+
+    addUserLine(q);
+    document.getElementById("question").value = "";
+    document.getElementById("question").disabled = true;
+    document.getElementById("send-btn").disabled = true;
+
+    const typingEl = addTyping();
+    try {
+      const res  = await fetch(`${API}/rag/chat`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ chat_id: ragChatId, question: q }),
+      });
+      const data = await res.json();
+      typingEl.remove();
+      if (data.error) {
+        addBotMessage(`ERROR: ${data.error}`, []);
+      } else {
+        addBotMessage(data.answer, data.sources || []);
+      }
+    } catch {
+      typingEl.remove();
+      addBotMessage("ERROR: COULD NOT REACH SERVER.", []);
+    }
+    document.getElementById("question").disabled = false;
+    document.getElementById("send-btn").disabled = false;
+    document.getElementById("question").focus();
+    loadHistory();
+  }
+
+  // ── Chat History ─────────────────────────────────────────────────────────
+  async function loadHistory() {
+    try {
+      const res   = await fetch(`${API}/rag/chats`);
+      const chats = await res.json();
+      const list  = document.getElementById("hist-list");
+      if (!chats.length) {
+        list.innerHTML = `<div style="font-size:12px;color:var(--ink-dim)">NO SESSIONS FOUND</div>`;
+        return;
+      }
+      list.innerHTML = chats.map(c => `
+        <div class="hist-item">
+          <div class="hist-file">${c.file}</div>
+          <div class="hist-preview" onclick="loadChat('${c.id}')">${c.preview}…</div>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <button class="del-btn" onclick="deleteChat('${c.id}')">[ DEL ]</button>
+          </div>
+        </div>
+      `).join("");
+    } catch { }
+  }
+
+  async function loadChat(chatId) {
+    showLoading("RESTORING RAG SESSION...");
+    try {
+      // restore session on backend
+      const restore = await fetch(`${API}/rag/chats/${chatId}/restore`, { method: "POST" });
+      const sess    = await restore.json();
+      if (sess.error) { alert(sess.error); return; }
+
+      ragChatId = sess.chat_id;
+
+      document.getElementById("drop-zone").style.display = "none";
+      document.getElementById("file-card").style.display = "flex";
+      document.getElementById("fc-name").textContent = sess.filename;
+      document.getElementById("fc-meta").textContent = `${sess.chunks} CHUNKS INDEXED`;
+      document.getElementById("question").disabled = false;
+      document.getElementById("send-btn").disabled = false;
+
+      // load and replay messages
+      const res  = await fetch(`${API}/rag/chats/${chatId}`);
+      const data = await res.json();
+
+      document.getElementById("messages").innerHTML        = "";
+      document.getElementById("empty-state").style.display = "none";
+      document.getElementById("chat-area").style.display   = "flex";
+
+      const msgs = data.messages || [];
+      for (let i = 0; i < msgs.length; i++) {
+        const m = msgs[i];
+        if (m.role === "user")      addUserLine(m.content);
+        else if (m.role === "assistant") addBotMessage(m.content, []);
+      }
+    } catch { alert("FAILED TO LOAD SESSION."); }finally {
+      hideLoading();                        
+    }
+  }
+
+  async function deleteChat(chatId) {
+    await fetch(`${API}/rag/chats/${chatId}`, { method: "DELETE" });
+    loadHistory();
+  }
+
+  // ── Model selector ────────────────────────────────────────────────────────
+  async function loadModels() {
+    try {
+      const res  = await fetch(`${API}/models`);
+      const data = await res.json();
+      const opts = document.getElementById("model-options");
+      opts.innerHTML = data.models.map(m => `
+        <div class="model-option ${m === data.current ? "active" : ""}"
+             onclick="switchModel('${m}')">
+          ${m}
+        </div>
+      `).join("");
+      if (data.current) {
+        document.getElementById("model-selected").textContent = data.current;
+      }
+    } catch {
+      document.getElementById("model-selected").textContent = "NO MODELS";
+    }
+  }
+
+  function toggleDropdown() {
+    document.getElementById("model-options").classList.toggle("open");
+  }
+
+  document.addEventListener("click", e => {
+    if (!document.getElementById("model-dropdown").contains(e.target)) {
+      document.getElementById("model-options").classList.remove("open");
+    }
+  });
+
+  async function switchModel(model) {
+    if (!model) return;
+    document.getElementById("model-options").classList.remove("open");
+    const res  = await fetch(`${API}/set_model`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ model }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById("model-selected").textContent = model;
+      const el = document.createElement("div");
+      el.className   = "term-line bot";
+      el.textContent = `MODEL SWITCHED TO: ${model}`;
+      document.getElementById("messages").appendChild(el);
+      ragScrollBottom();
+    }
+  }
+
+  // ── DOM helpers ──────────────────────────────────────────────────────────
+  function addUserLine(text) {
+    const el = document.createElement("div");
+    el.className = "term-line user";
+    el.innerHTML = esc(text);
+    document.getElementById("messages").appendChild(el);
+    scrollBottom();
+  }
+
+  function addBotMessage(answer, sources) {
+    const wrap = document.createElement("div");
+
+    if (sources && sources.length > 0) {
+      const items = sources.map((s, i) =>
+        `<div class="source-item">[Source Chunk #${i+1}]<br>${esc(s)}...</div>`
+      ).join("");
+      wrap.innerHTML = `
+        <details>
+          <div class="sources-block">
+            <summary>// SOURCES (${sources.length} chunks)</summary>
+            ${items}
+          </div>
+        </details>`;
+    }
+
+    const ansEl = document.createElement("div");
+    ansEl.className = "term-line bot";
+    ansEl.innerHTML = esc(answer);
+    wrap.appendChild(ansEl);
+
+    document.getElementById("messages").appendChild(wrap);
+    scrollBottom();
+  }
+
+  function addTyping() {
+    const el = document.createElement("div");
+    el.className = "term-line bot";
+    el.innerHTML = `<div class="typing"><span></span><span></span><span></span></div>`;
+    document.getElementById("messages").appendChild(el);
+    scrollBottom();
+    return el;
+  }
+
+  function scrollBottom() {
+    const m = document.getElementById("messages");
+    m.scrollTop = m.scrollHeight;
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\n/g, "<br>");
+  }
+  function showLoading(msg = "LOADING SESSION...") {
+    document.getElementById("loading-msg").textContent = msg;
+    document.getElementById("loading-overlay").classList.add("show");
+  }
+
+  function hideLoading() {
+    document.getElementById("loading-overlay").classList.remove("show");
+  }
+
+  loadHistory();
+  loadModels();
+</script>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <p id="loading-msg">LOADING SESSION...</p>
+  <div class="load-bar">
+    <div class="load-bar-inner"></div>
+  </div>
+</div>
+</body>
+</html>
