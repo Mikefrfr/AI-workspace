@@ -641,24 +641,33 @@
   }
 
   // ── Model selector ────────────────────────────────────────────────────────
-  async function loadModels() {
+async function loadModels() {
     try {
-      const res  = await fetch(`${API}/models`);
-      const data = await res.json();
-      const opts = document.getElementById("model-options");
-      opts.innerHTML = data.models.map(m => `
-        <div class="model-option ${m === data.current ? "active" : ""}"
-             onclick="switchModel('${m}')">
-          ${m}
-        </div>
-      `).join("");
-      if (data.current) {
-        document.getElementById("model-selected").textContent = data.current;
-      }
+        const res  = await fetch(`${API}/models`);
+        const data = await res.json();
+        const opts = document.getElementById("model-options");
+
+        if (!data.models.length) {
+            document.getElementById("model-selected").textContent = "NO MODELS FOUND";
+            opts.innerHTML = `<div class="model-option" style="color:var(--red)">NO MODELS FOUND</div>`;
+            return;
+        }
+
+        opts.innerHTML = data.models.map(m => `
+            <div class="model-option ${m === data.current ? "active" : ""}"
+                 onclick="switchModel('${m}')">
+                ${m}
+            </div>
+        `).join("");
+        if (data.current) {
+            document.getElementById("model-selected").textContent = data.current;
+        }
     } catch {
-      document.getElementById("model-selected").textContent = "NO MODELS";
+        document.getElementById("model-selected").textContent = "OLLAMA OFFLINE";
+        document.getElementById("model-options").innerHTML =
+            `<div class="model-option" style="color:var(--red)">OLLAMA OFFLINE</div>`;
     }
-  }
+}
 
   function toggleDropdown() {
     document.getElementById("model-options").classList.toggle("open");

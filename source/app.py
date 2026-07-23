@@ -50,7 +50,18 @@ UPLOAD_DIR.mkdir(exist_ok=True)   # ← and this
 app = Flask(__name__, static_folder=".")
 CORS(app)
 
-MODEL    = "llama3"
+try:
+    raw     = ollama.list()
+    if isinstance(raw, dict):
+        _models = [m.get("name") or m.get("model") for m in raw.get("models", [])]
+    else:
+        _models = [m.model for m in raw.models]
+    MODEL = _models[0] if _models else "llama3:latest"
+    print(f"[setup] default model: {MODEL}")
+except Exception:
+    MODEL = "llama3:latest"
+
+app.config["MODEL"] = MODEL 
 sessions = {}
 
 from cookbook import cookbook_bp
@@ -61,7 +72,7 @@ app.register_blueprint(cookbook_bp)
 # ── File Loaders ──────────────────────────────────────────────────────────────
 
 def save_message(chat_id, role, content):
-    path = RAG_HISTORY_DIR / f"{chat_id}.json"
+    path = HISTORY_DIR / f"{chat_id}.json"
     history = json.loads(path.read_text()) if path.exists() else {"id": chat_id, "messages": [], "file": ""}
     history["messages"].append({
         "role": role,
@@ -369,12 +380,14 @@ def chat():
     answer  = explain["message"]["content"].strip()
 
         # save to chat history
-    chat_id  = body.get("chat_id")
+    chat_id = body.get("chat_id")
     if chat_id:
-        save_message(chat_id, "user",      question)
-        save_message(chat_id, "thinking",  plan)
-        save_message(chat_id, "result",    str(result))
-        save_message(chat_id, "assistant", answer)
+        analyst_path = HISTORY_DIR / f"{chat_id}.json"
+        if analyst_path.exists():                          # only save if it's an analyst chat
+            save_message(chat_id, "user",      question)
+            save_message(chat_id, "thinking",  plan)
+            save_message(chat_id, "result",    str(result))
+            save_message(chat_id, "assistant", answer)
 
     return jsonify({"thinking": plan, "result": result, "answer": answer})
 
@@ -514,4 +527,4 @@ def restore_rag_chat(chat_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000)
