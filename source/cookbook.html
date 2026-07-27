@@ -149,6 +149,7 @@
 </div>
 
 <script>
+  let currentRequest = null;   // ← add this
   const API = "http://localhost:5000";
 
   // animate dots
@@ -177,9 +178,6 @@ function getSessionId() {
     document.getElementById("loading").style.display  = "block";
     document.getElementById("content").style.display  = "none";
     document.getElementById("error-msg").style.display = "none";
-    document.getElementById("loading").style.display  = "block";
-    document.getElementById("content").style.display  = "none";
-    document.getElementById("error-msg").style.display = "none";
 
     try {
       const res  = await fetch(`${API}/cookbook`, {
@@ -199,6 +197,7 @@ function getSessionId() {
   }
 
   function render(data) {
+    console.log("render() called, data =", data); 
     document.getElementById("loading").style.display = "none";
     document.getElementById("content").style.display = "block";
 

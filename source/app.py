@@ -36,6 +36,7 @@ from pathlib import Path
 from rag_ingest import ingest_file
 from rag_pipeline import query_rag
 
+active_requests = {}
 rag_sessions = {}   # collection → { filename, chroma_path, chat_id }
 
 HISTORY_DIR     = Path("chat_history")
@@ -86,11 +87,14 @@ def list_chats():
     for f in sorted(HISTORY_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
         data = json.loads(f.read_text())
         chats.append({
-            "id":       data["id"],
-            "file":     data.get("file", ""),
-            "preview":  data["messages"][0]["content"][:60] if data["messages"] else "",
-            "count":    len(data["messages"]),
+            "id":      data["id"],
+            "file":    data.get("file", ""),
+            "preview": data["messages"][-1]["content"][:60] if data["messages"] else "",
+            "count":   len(data["messages"]),
+            "last":    data["messages"][-1]["time"] if data["messages"] else "",
         })
+    # sort by last message time
+    chats.sort(key=lambda x: x["last"], reverse=True)
     return chats
 
 def rag_save_message(chat_id, role, content):
@@ -110,9 +114,11 @@ def list_rag_chats():
         chats.append({
             "id":      data["id"],
             "file":    data.get("file", ""),
-            "preview": data["messages"][0]["content"][:60] if data["messages"] else "",
+            "preview": data["messages"][-1]["content"][:60] if data["messages"] else "",
             "count":   len(data["messages"]),
+            "last":    data["messages"][-1]["time"] if data["messages"] else "",
         })
+    chats.sort(key=lambda x: x["last"], reverse=True)
     return chats
 
 def try_csv(path):
@@ -255,6 +261,13 @@ def index():
 def cookbook_page():
     return send_from_directory(".", "cookbook.html")
 
+@app.route("/cancel", methods=["POST"])
+def cancel():
+    chat_id = (request.json or {}).get("chat_id")
+    if chat_id:
+        active_requests[chat_id] = True
+    return jsonify({"ok": True})
+
 @app.route("/upload", methods=["POST"])
 def upload():
     f = request.files.get("file")
@@ -329,61 +342,79 @@ def restore_chat(chat_id):
 
 @app.route("/chat", methods=["POST"])
 def chat():
-
-    body    = request.json
-    sid     = body.get("session_id")
+    body     = request.json
+    sid      = body.get("session_id")
+    chat_id  = body.get("chat_id")
     question = body.get("question", "").strip()
     MODEL    = app.config.get("MODEL", "llama3")
 
     if sid not in sessions:
-        return jsonify({"error": "Session not found. Please upload a file first."}), 400
+        return jsonify({"error": "Session not found."}), 400
+
+    # mark as active
+    active_requests[chat_id] = False
 
     sess    = sessions[sid]
     df      = sess["df"]
     summary = sess["summary"]
 
-    # Call 1 — thinking + code in one shot
-    resp = ollama.chat(model=MODEL, options={"temperature": 0.1, "num_predict": 600}, messages=[{
+    # Call 1 — thinking + code
+    resp     = ollama.chat(model=MODEL, options={"temperature": 0.1, "num_predict": 600}, messages=[{
         "role": "user",
         "content": MAIN_PROMPT.format(summary=summary, question=question)
     }])
-    llm_text  = resp["message"]["content"]
-    plan      = llm_text.split("```")[0].strip()   # everything before the code block
-    code      = extract_code(llm_text)
+
+    # check if cancelled after call 1
+    if active_requests.get(chat_id):
+        active_requests.pop(chat_id, None)
+        return jsonify({"cancelled": True})
+
+    llm_text = resp["message"]["content"]
+    plan     = llm_text.split("```")[0].strip()
+    code     = extract_code(llm_text)
 
     result = None
     if code:
         result = run_code(code, df)
 
-        # self-correction (up to 2 retries)
         for attempt in range(2):
             if not (result or "").startswith("ERROR"):
                 break
+            # check if cancelled during retries
+            if active_requests.get(chat_id):
+                active_requests.pop(chat_id, None)
+                return jsonify({"cancelled": True})
             hint = ""
             err  = result.lower()
             if "m8" in err or "datetime" in err:
-                hint = " HINT: Use (date_b - date_a).days — never subtract datetime from float."
+                hint = " HINT: Use (date_b - date_a).days"
             elif "keyerror" in err:
                 hint = f" HINT: Available columns: {list(df.columns)}"
             elif "index" in err:
                 hint = " HINT: Guard with: if not subset.empty: before .index[0]"
-            fix = ollama.chat(model=MODEL, options={"temperature": 0.1, "num_predict": 600}, messages=[{"role": "user", "content":
-                f"This code errored:\n..."}])
+            fix   = ollama.chat(model=MODEL, options={"temperature": 0.1, "num_predict": 600}, messages=[{"role": "user", "content":
+                f"This code errored:\n```python\n{code}\n```\nError: {result}{hint}\nReturn only the fixed ```python...``` block."}])
             code2 = extract_code(fix["message"]["content"])
             if code2:
                 code   = code2
                 result = run_code(code2, df)
 
-    # Call 2 — plain English explanation
+    # check if cancelled before explanation
+    if active_requests.get(chat_id):
+        active_requests.pop(chat_id, None)
+        return jsonify({"cancelled": True})
+
+    # Call 2 — explain
     explain = ollama.chat(model=MODEL, options={"temperature": 0.3, "num_predict": 200}, messages=[{"role": "user", "content":
-        f"Question: {question}\nResult: {result}\n\nGive a SHORT answer using the result above.\n- If it's a single number, answer in ONE sentence only.\n- If it's complex, use 2-3 sentences max.\n- Use only the data from the result, do not add outside knowledge."}])
+        f"Question: {question}\nResult: {result}\nGive a SHORT answer. If single number, ONE sentence only. Use only data from result."}])
     answer  = explain["message"]["content"].strip()
 
-        # save to chat history
-    chat_id = body.get("chat_id")
+    active_requests.pop(chat_id, None)
+
+    # save to history
     if chat_id:
         analyst_path = HISTORY_DIR / f"{chat_id}.json"
-        if analyst_path.exists():                          # only save if it's an analyst chat
+        if analyst_path.exists():
             save_message(chat_id, "user",      question)
             save_message(chat_id, "thinking",  plan)
             save_message(chat_id, "result",    str(result))

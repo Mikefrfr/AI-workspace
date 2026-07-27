@@ -366,8 +366,8 @@
     font-size: 15px;
     background: #000d1a;
     border: 1px solid var(--ink-dim);
-    color: var(--ink-dim);
-    padding: 4px 14px;
+    color: var(--ink);
+    padding: 6px 14px;
     cursor: pointer;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -491,23 +491,28 @@
   <div id="empty-state">
     <pre>
   ╔══════════════════════════════════════╗
-  ║   DATA ANALYST                       ║
+  ║   WELCOME                            ║
   ║   UPLOAD DATA INPUT...               ║
   ╚══════════════════════════════════════╝
     </pre>
-    <p>Upload a file to begin analysis</span></p>
+    <p>Upload a document to begin</span></p>
   </div>
 
   <div id="chat-area">
     <div id="messages"></div>
     <div id="input-bar">
-  <div id="model-dropdown">
-    <div id="model-selected" onclick="toggleDropdown()">-- MODEL --</div>
-    <div id="model-options"></div>
-</div>
-  <span id="input-prefix">&gt;</span>
-  <textarea id="question" rows="1" placeholder="ENTER QUERY..." disabled></textarea>
-  <button id="send-btn" disabled>[ SEND ]</button>
+        <div id="model-dropdown">
+            <div id="model-selected" onclick="toggleDropdown()">-- MODEL --</div>
+            <div id="model-options"></div>
+        </div>
+        <span id="input-prefix">&gt;</span>
+        <textarea id="question" rows="1" placeholder="ENTER QUERY..." disabled></textarea>
+        <button id="stop-btn" onclick="stopQuery()"
+            style="display:none;font-family:var(--font);font-size:15px;background:transparent;
+            border:2px solid var(--red);color:var(--red);padding:6px 14px;cursor:pointer;
+            text-transform:uppercase;flex-shrink:0;">[ STOP ]</button>
+        <button id="send-btn" disabled onclick="sendMessage()">[ SEND ]</button>
+    </div>
 </div>
   </div>
 </main>
@@ -520,10 +525,11 @@
   display:none; position:fixed; inset:0;
   background:rgba(0,0,0,0.85);
   z-index:1000;
-  align-items:center;
-  justify-content:center;
 ">
   <div style="
+    position:absolute;
+    top:50%; left:50%;
+    transform:translate(-50%, -50%);
     width:620px; max-width:95vw;
     height:80vh;
     border:2px solid var(--ink);
@@ -545,13 +551,14 @@
         text-transform:uppercase; letter-spacing:1px;
       ">[ CLOSE ]</button>
     </div>
-    <iframe id="cookbook-frame" src="cookbook.html"
-      style="flex:1; border:none; width:100%;">
+    <iframe id="cookbook-frame" src=""
+      style="flex:1; border:none; width:100%; overflow-y:auto;">
     </iframe>
   </div>
 </div>
 
 <script>
+  let currentRequest = null;   // ← add this
   const API = "http://localhost:5000";
   let sessionId = null;
   let chatId    = null;
@@ -637,29 +644,38 @@
     addUserLine(q);
     document.getElementById("question").value = "";
     setInputEnabled(false);
+    document.getElementById("stop-btn").style.display = "block";   // ← show stop btn
 
+    currentRequest = new AbortController();   // ← create controller
     const typingEl = addTyping();
     try {
-      const res  = await fetch(`${API}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, chat_id: chatId, question: q }),
-      });
-      const data = await res.json();
-      typingEl.remove();
-      if (data.error) {
-        addBotMessage(null, null, `ERROR: ${data.error}`);
-      } else {
-        addBotMessage(data.thinking, data.result, data.answer);
-      }
-    } catch {
-      typingEl.remove();
-      addBotMessage(null, null, "ERROR: COULD NOT REACH SERVER.");
+        const res  = await fetch(`${API}/chat`, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ session_id: sessionId, chat_id: chatId, question: q }),
+            signal:  currentRequest.signal,   // ← attach signal
+        });
+        const data = await res.json();
+        typingEl.remove();
+        if (data.error) {
+            addBotMessage(null, null, `ERROR: ${data.error}`);
+        } else {
+            addBotMessage(data.thinking, data.result, data.answer);
+        }
+    } catch(e) {
+        typingEl.remove();
+        if (e.name === "AbortError") {
+        } else {
+            addBotMessage(null, null, "ERROR: COULD NOT REACH SERVER.");
+        }
+    } finally {
+        currentRequest = null;
+        setInputEnabled(true);
+        document.getElementById("stop-btn").style.display = "none";   // ← hide stop btn
+        loadHistory();
+        document.getElementById("question").focus();
     }
-    setInputEnabled(true);
-    loadHistory();
-    document.getElementById("question").focus();
-  }
+}
 
   // ── History ───────────────────────────────────────────────────────────────
   async function loadHistory() {
@@ -679,6 +695,34 @@
       `).join("");
     } catch { }
   }
+
+  function stopQuery() {
+    // cancel frontend request
+    if (currentRequest) {
+        currentRequest.abort();
+        currentRequest = null;
+    }
+    // tell backend to stop
+    if (chatId) {
+        fetch(`${API}/cancel`, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ chat_id: chatId }),
+        });
+    }
+    setInputEnabled(true);
+    document.getElementById("stop-btn").style.display = "none";
+    addBotLine("QUERY INTERRUPTED.");
+}
+
+function addBotLine(text) {
+    const el = document.createElement("div");
+    el.className = "term-line bot";
+    el.style.color = "var(--amber)";
+    el.textContent = text;
+    document.getElementById("messages").appendChild(el);
+    scrollBottom();
+}
 
   async function loadChat(cId) {
     showLoading("RESTORING SESSION...");
@@ -784,14 +828,15 @@
   }
 
 function openCookbook() {
-    window._sessionId = sessionId;   // expose for iframe
-    const frame = document.getElementById("cookbook-frame");
-    frame.src   = `http://localhost:5000/cookbook.html?session_id=${sessionId || ''}`;
-    document.getElementById("cookbook-overlay").classList.add("open");
+    window._sessionId = sessionId;
+    document.getElementById("cookbook-frame").src =
+        `http://localhost:5000/cookbook.html?session_id=${sessionId || ''}`;
+    document.getElementById("cookbook-overlay").style.display = "block";
 }
 
 function closeCookbook() {
-    document.getElementById("cookbook-overlay").classList.remove("open");
+    document.getElementById("cookbook-overlay").style.display = "none";
+    document.getElementById("cookbook-frame").src = "";
 }
 
   // listen for model selection from cookbook iframe
