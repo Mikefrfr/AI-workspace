@@ -1,24 +1,3 @@
-import subprocess, sys
-
-REQUIRED = [
-    "pandas", "numpy", "flask", "flask-cors", "ollama",
-    "openpyxl", "pyarrow", "psutil", "requests",
-    "langchain", "langchain-chroma", "langchain-huggingface",
-    "langchain-community", "langchain-ollama", "langchain-core",
-    "langchain-text-splitters", "sentence-transformers",
-    "tiktoken", "chromadb", "pdfplumber", "python-docx"
-]
-
-print("[setup] checking and installing required packages...")
-for pkg in REQUIRED:
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", pkg, "-q"],
-        capture_output=True
-    )
-print("[setup] all packages ready.")
-
-
-
 import pandas as pd
 import numpy as np
 import ollama
@@ -351,27 +330,27 @@ def chat():
     if sid not in sessions:
         return jsonify({"error": "Session not found."}), 400
 
-    # mark as active
     active_requests[chat_id] = False
-
     sess    = sessions[sid]
     df      = sess["df"]
     summary = sess["summary"]
 
-    # Call 1 — thinking + code
-    resp     = ollama.chat(model=MODEL, options={"temperature": 0.1, "num_predict": 600}, messages=[{
-        "role": "user",
-        "content": MAIN_PROMPT.format(summary=summary, question=question)
-    }])
+    # Call 1 — stream response so we can cancel mid-generation
+    full_text = ""
+    for chunk in ollama.chat(
+        model=MODEL,
+        options={"temperature": 0.1, "num_predict": 600},
+        messages=[{"role": "user", "content": MAIN_PROMPT.format(summary=summary, question=question)}],
+        stream=True
+    ):
+        # check cancel flag on every chunk
+        if active_requests.get(chat_id):
+            active_requests.pop(chat_id, None)
+            return jsonify({"cancelled": True})
+        full_text += chunk["message"]["content"]
 
-    # check if cancelled after call 1
-    if active_requests.get(chat_id):
-        active_requests.pop(chat_id, None)
-        return jsonify({"cancelled": True})
-
-    llm_text = resp["message"]["content"]
-    plan     = llm_text.split("```")[0].strip()
-    code     = extract_code(llm_text)
+    plan = full_text.split("```")[0].strip()
+    code = extract_code(full_text)
 
     result = None
     if code:
@@ -380,7 +359,6 @@ def chat():
         for attempt in range(2):
             if not (result or "").startswith("ERROR"):
                 break
-            # check if cancelled during retries
             if active_requests.get(chat_id):
                 active_requests.pop(chat_id, None)
                 return jsonify({"cancelled": True})
@@ -392,26 +370,46 @@ def chat():
                 hint = f" HINT: Available columns: {list(df.columns)}"
             elif "index" in err:
                 hint = " HINT: Guard with: if not subset.empty: before .index[0]"
-            fix   = ollama.chat(model=MODEL, options={"temperature": 0.1, "num_predict": 600}, messages=[{"role": "user", "content":
-                f"This code errored:\n```python\n{code}\n```\nError: {result}{hint}\nReturn only the fixed ```python...``` block."}])
-            code2 = extract_code(fix["message"]["content"])
+
+            fix_text = ""
+            for chunk in ollama.chat(
+                model=MODEL,
+                options={"temperature": 0.1, "num_predict": 600},
+                messages=[{"role": "user", "content":
+                    f"This code errored:\n```python\n{code}\n```\nError: {result}{hint}\nReturn only the fixed ```python...``` block."}],
+                stream=True
+            ):
+                if active_requests.get(chat_id):
+                    active_requests.pop(chat_id, None)
+                    return jsonify({"cancelled": True})
+                fix_text += chunk["message"]["content"]
+
+            code2 = extract_code(fix_text)
             if code2:
                 code   = code2
                 result = run_code(code2, df)
 
-    # check if cancelled before explanation
     if active_requests.get(chat_id):
         active_requests.pop(chat_id, None)
         return jsonify({"cancelled": True})
 
     # Call 2 — explain
-    explain = ollama.chat(model=MODEL, options={"temperature": 0.3, "num_predict": 200}, messages=[{"role": "user", "content":
-        f"Question: {question}\nResult: {result}\nGive a SHORT answer. If single number, ONE sentence only. Use only data from result."}])
-    answer  = explain["message"]["content"].strip()
+    explain_text = ""
+    for chunk in ollama.chat(
+        model=MODEL,
+        options={"temperature": 0.3, "num_predict": 200},
+        messages=[{"role": "user", "content":
+            f"Question: {question}\nResult: {result}\nGive a SHORT answer. If single number, ONE sentence only. Use only data from result."}],
+        stream=True
+    ):
+        if active_requests.get(chat_id):
+            active_requests.pop(chat_id, None)
+            return jsonify({"cancelled": True})
+        explain_text += chunk["message"]["content"]
 
+    answer = explain_text.strip()
     active_requests.pop(chat_id, None)
 
-    # save to history
     if chat_id:
         analyst_path = HISTORY_DIR / f"{chat_id}.json"
         if analyst_path.exists():
