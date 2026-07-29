@@ -245,6 +245,10 @@ def index():
 def cookbook_page():
     return send_from_directory(".", "cookbook.html")
 
+@app.route('/flamingo.css')
+def serve_css():
+    return send_from_directory('.', 'flamingo.css')
+
 @app.route("/cancel", methods=["POST"])
 def cancel():
     chat_id = (request.json or {}).get("chat_id")
