@@ -32,9 +32,9 @@
   #sidebar {
     width: 280px;
     min-width: 280px;
-    background: #000d1a;
+    background: #00080f;
     border-right: 1px solid var(--ink-dim);
-    box-shadow: 2px 0 12px rgba(0,229,255,0.15);
+    box-shadow: 2px 0 12px rgba(0,229,255,0.1);
     display: flex;
     flex-direction: column;
     padding: 20px 16px;
@@ -48,7 +48,7 @@
     color: var(--ink-bright);
     letter-spacing: 2px;
     text-transform: uppercase;
-    text-shadow: 0 0 6px var(--ink), 0 0 16px var(--ink);
+    text-shadow: 0 0 6px var(--ink);
     border-bottom: 1px solid var(--ink-dim);
     padding-bottom: 10px;
   }
@@ -420,9 +420,11 @@
 <aside id="sidebar">
   <h1>FLAMINGO</h1>
 <div style="font-size:13px;color:var(--ink-dim);letter-spacing:2px;text-transform:uppercase;margin-top:-10px;">// RAG PIPELINE</div>
-
-  <button class="nav-btn primary"     onclick="newChat()">[ + NEW SESSION ]</button>
   <button class="nav-btn analyst-btn" onclick="window.location.href='http://localhost:5000'">[ DATA ANALYST ]</button>
+  <button class="nav-btn analyst-btn" onclick="window.location.href='http://localhost:5000/playground.html'">
+  [ PLAYGROUND ]
+</button>
+<button class="nav-btn primary"     onclick="newChat()">[ + NEW SESSION ]</button>
 
   <div id="drop-zone" onclick="document.getElementById('file-input').click()">
     <div class="icon">⬆</div>
@@ -444,7 +446,7 @@
   </div>
 
   <div id="sidebar-footer">
-    OLLAMA · LOCAL · PRIVATE
+    FLAMINGO · OLLAMA · LOCAL
   </div>
 </aside>
 
@@ -468,7 +470,7 @@
     <div id="model-options"></div>
   </div>
       <span id="input-prefix">&gt;</span>
-      <textarea id="question" rows="1" placeholder="ASK ABOUT YOUR DOCUMENT..." disabled></textarea>
+      <textarea id="question" rows="1" placeholder="ENTER QUERY..." disabled></textarea>
       <button id="send-btn" disabled onclick="sendMessage()">[ SEND ]</button>
     </div>
   </div>

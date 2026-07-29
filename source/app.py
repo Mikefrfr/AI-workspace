@@ -27,6 +27,11 @@ RAG_HISTORY_DIR.mkdir(exist_ok=True)
 UPLOAD_DIR = Path("uploads")      # ← add this
 UPLOAD_DIR.mkdir(exist_ok=True)   # ← and this
 
+PLAYGROUND_DIR = Path("playground_history")
+PLAYGROUND_DIR.mkdir(exist_ok=True)
+
+playground_active = {}   # chat_id → cancelled flag
+
 app = Flask(__name__, static_folder=".")
 CORS(app)
 
@@ -554,6 +559,80 @@ def restore_rag_chat(chat_id):
         "chunks":   chunks
     })
 
+@app.route("/playground.html")
+def playground_page():
+    return send_from_directory(".", "playground.html")
+
+@app.route("/playground/chat", methods=["POST"])
+def playground_chat():
+    body          = request.json
+    chat_id       = body.get("chat_id")
+    model         = body.get("model", app.config.get("MODEL", MODEL))
+    system_prompt = body.get("system_prompt", "You are a helpful assistant.")
+    messages      = body.get("messages", [])
+
+    playground_active[chat_id] = False
+
+    # build message list with system prompt
+    full_messages = [{"role": "system", "content": system_prompt}] + messages
+
+    # stream response so we can cancel
+    answer = ""
+    for chunk in ollama.chat(model=model, messages=full_messages, stream=True):
+        if playground_active.get(chat_id):
+            playground_active.pop(chat_id, None)
+            return jsonify({"cancelled": True})
+        answer += chunk["message"]["content"]
+
+    playground_active.pop(chat_id, None)
+
+    # save to playground history
+    path    = PLAYGROUND_DIR / f"{chat_id}.json"
+    history = json.loads(path.read_text()) if path.exists() else {
+        "id": chat_id, "model": model, "messages": []
+    }
+    history["model"] = model
+    history["messages"].append({"role": "user",      "content": messages[-1]["content"], "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+    history["messages"].append({"role": "assistant", "content": answer,                  "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+    path.write_text(json.dumps(history, indent=2))
+
+    return jsonify({"answer": answer})
+
+@app.route("/playground/cancel", methods=["POST"])
+def playground_cancel():
+    chat_id = (request.json or {}).get("chat_id")
+    if chat_id:
+        playground_active[chat_id] = True
+    return jsonify({"ok": True})
+
+@app.route("/playground/chats", methods=["GET"])
+def get_playground_chats():
+    chats = []
+    for f in sorted(PLAYGROUND_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+        data = json.loads(f.read_text())
+        msgs = data.get("messages", [])
+        chats.append({
+            "id":      data["id"],
+            "model":   data.get("model", ""),
+            "preview": msgs[0]["content"][:60] if msgs else "",
+            "count":   len(msgs),
+            "last":    msgs[-1]["time"] if msgs else "",
+        })
+    chats.sort(key=lambda x: x["last"], reverse=True)
+    return jsonify(chats)
+
+@app.route("/playground/chats/<chat_id>", methods=["GET"])
+def get_playground_chat(chat_id):
+    path = PLAYGROUND_DIR / f"{chat_id}.json"
+    if not path.exists():
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(json.loads(path.read_text()))
+
+@app.route("/playground/chats/<chat_id>", methods=["DELETE"])
+def delete_playground_chat(chat_id):
+    path = PLAYGROUND_DIR / f"{chat_id}.json"
+    if path.exists(): path.unlink()
+    return jsonify({"ok": True})
 
 if __name__ == "__main__":
     app.run(debug=False, port=5000)
