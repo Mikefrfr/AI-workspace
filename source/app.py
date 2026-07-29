@@ -397,7 +397,7 @@ def chat():
     explain_text = ""
     for chunk in ollama.chat(
         model=MODEL,
-        options={"temperature": 0.3, "num_predict": 200},
+        options={"temperature": 0.3, "num_predict": 500},
         messages=[{"role": "user", "content":
             f"Question: {question}\nResult: {result}\nGive a SHORT answer. If single number, ONE sentence only. Use only data from result."}],
         stream=True
