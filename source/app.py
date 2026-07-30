@@ -577,10 +577,8 @@ def playground_chat():
 
     playground_active[chat_id] = False
 
-    # build message list with system prompt
     full_messages = [{"role": "system", "content": system_prompt}] + messages
 
-    # stream response so we can cancel
     answer = ""
     for chunk in ollama.chat(model=model, messages=full_messages, stream=True):
         if playground_active.get(chat_id):
@@ -595,9 +593,18 @@ def playground_chat():
     history = json.loads(path.read_text()) if path.exists() else {
         "id": chat_id, "model": model, "messages": []
     }
-    history["model"] = model
-    history["messages"].append({"role": "user",      "content": messages[-1]["content"], "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
-    history["messages"].append({"role": "assistant", "content": answer,                  "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+    history["model"]         = model
+    history["system_prompt"] = system_prompt          # ← must be here
+    history["messages"].append({
+        "role":    "user",
+        "content": messages[-1]["content"],
+        "time":    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+    history["messages"].append({
+        "role":    "assistant",
+        "content": answer,
+        "time":    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
     path.write_text(json.dumps(history, indent=2))
 
     return jsonify({"answer": answer})
