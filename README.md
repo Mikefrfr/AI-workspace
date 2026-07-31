@@ -56,8 +56,8 @@ Choose your own model and enter the system prompt to test your models and have f
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/AI-workspace.git
-cd AI-workspace.git
+git clone https://github.com/yourusername/flamingo.git
+cd flamingo
 ```
 
 ### 2. Install Python dependencies
