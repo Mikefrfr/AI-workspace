@@ -99,6 +99,27 @@ body {
   text-align: left;
 }
 
+#confirm-prompt-btn {
+  font-family: var(--font);
+  font-size: 15px;
+  background: transparent;
+  border: 1px solid var(--ink-dim);
+  color: var(--ink-dim);
+  padding: 4px 10px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  align-self: flex-start;
+  transition: all .15s;
+  margin-top: 4px;
+}
+
+#confirm-prompt-btn:hover {
+  background: var(--ink);
+  color: var(--bg);
+  text-shadow: none;
+}
+
 #new-chat-btn:hover, 
 .nav-btn:hover { 
   background: var(--ink); 

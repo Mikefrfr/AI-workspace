@@ -28,17 +28,11 @@
 
   <!-- system prompt -->
 <div id="system-prompt-box">
-    <label>// System Prompt</label>
+    <label>System Prompt</label>
     <textarea id="system-prompt" placeholder="You are a helpful assistant...">You are a helpful assistant.</textarea>
-    <button id="confirm-prompt-btn" onclick="confirmPrompt()" style="
-        font-family:var(--font);font-size:15px;
-        background:transparent;
-        border:1px solid var(--ink-dim);
-        color:var(--ink-dim);padding:4px 10px;
-        cursor:pointer;text-transform:uppercase;
-        letter-spacing:1px;align-self:flex-start;
-        transition:all .15s;margin-top:4px;
-    ">[ ✓ CONFIRM PROMPT ]</button>
+    <button id="confirm-prompt-btn" class="prompt-btn" onclick="confirmPrompt()">
+  [ CONFIRM PROMPT ]
+</button>
     <div id="prompt-status" style="font-size:12px;color:var(--ink-dim);letter-spacing:1px;"></div>
 </div>
 
@@ -59,12 +53,10 @@
   <div id="empty-state" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:var(--ink-dim);">
     <pre style="font-size:15px;line-height:1.2;color:var(--ink-dim);text-shadow:0 0 4px var(--ink-dim);letter-spacing:2px;">
   ╔══════════════════════════════════════╗
-  ║   FLAMINGO                           ║
-  ║   // PLAYGROUND                      ║
-  ║   SELECT A MODEL AND START TALKING   ║
+  ║   WELCOME                            ║
+  ║   SELECT A MODEL AND START TALKING.. ║
   ╚══════════════════════════════════════╝
     </pre>
-    <p style="font-size:17px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:2px;">Talk to any local model freely <span class="cursor"></span></p>
   </div>
 </div>
   <div id="input-bar">
@@ -222,7 +214,7 @@
       }
       list.innerHTML = chats.map(c => `
         <div class="hist-item">
-          <div class="hist-model">// ${c.model || "unknown"}</div>
+          <div class="hist-model">${c.model || "unknown"}</div>
           <div class="hist-preview" onclick="loadChat('${c.id}')">${c.preview}...</div>
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div class="hist-meta">${c.count} MESSAGES</div>
@@ -274,7 +266,7 @@
     if (data.system_prompt) {
     confirmedSystemPrompt = data.system_prompt;
     document.getElementById("system-prompt").value = data.system_prompt;
-    document.getElementById("prompt-status").textContent = "✅ PROMPT CONFIRMED";
+    document.getElementById("prompt-status").textContent = "PROMPT CONFIRMED";
 }
 }
 
@@ -294,9 +286,8 @@
       <div id="empty-state" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:var(--ink-dim);">
         <pre style="font-size:15px;line-height:1.2;color:var(--ink-dim);text-shadow:0 0 4px var(--ink-dim);letter-spacing:2px;">
   ╔══════════════════════════════════════╗
-  ║   FLAMINGO                           ║
-  ║   // PLAYGROUND                      ║
-  ║   SELECT A MODEL AND START TALKING   ║
+  ║   WELCOME                            ║
+  ║   SELECT A MODEL AND START TALKING.. ║
   ╚══════════════════════════════════════╝
         </pre>
         <p style="font-size:17px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:2px;">Talk to any local model freely <span class="cursor"></span></p>
@@ -365,7 +356,7 @@ function confirmPrompt() {
     const status = document.getElementById("prompt-status");
     btn.style.borderColor = "var(--ink)";
     btn.style.color       = "var(--ink)";
-    status.textContent    = "✅ PROMPT CONFIRMED";
+    status.textContent    = "PROMPT CONFIRMED";
     status.style.color    = "var(--ink)";
     setTimeout(() => {
         btn.style.borderColor = "var(--ink-dim)";
