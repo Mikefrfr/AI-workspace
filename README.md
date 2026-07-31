@@ -21,7 +21,7 @@ This project has three main features (most of it is vibecoded) :
 Upload any structured data file (CSV, Excel, JSON, Parquet) and ask questions about it. The AI writes Python/Pandas code behind the scenes, runs it on your data, and explains the result.
 
 ### 2. RAG Pipeline
-Upload any document (PDF, TXT, DOCX, Markdown) and ask questions about its content. The system uses a hybrid search approach combining semantic vector search and keyword search, then re-ranks results for the most accurate answers with source citations.
+Upload any document (PDF, TXT, DOCX, Markdown) and ask questions about its content. The system uses a semantic vector search and keyword search, then re-ranks results for accurate answers.
 
 ### 3. Playground
 Choose your own model and enter the system prompt to test your models and have fun with it.
