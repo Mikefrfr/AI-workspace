@@ -1,4 +1,4 @@
-# Local AI Data Analyst
+# Flamingo
 
 A local, AI-powered data analysis tool and a workspace to test models that runs entirely on your machine(localhost), also got a cool retro-like UI.
 
