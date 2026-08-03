@@ -95,7 +95,3 @@ http://localhost:5000
 ```
 
 ---
-
-## License
-
-MIT License — free to use, modify, and distribute.
